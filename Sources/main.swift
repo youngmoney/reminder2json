@@ -20,6 +20,10 @@ extension EKEventStore {
     }
 }
 
+enum OutputFormat : String, ExpressibleByArgument, CaseIterable {
+    case fullJson, simple
+}
+
 @main
 struct Reminder2Json: AsyncParsableCommand {
     @Option(help: "Lists to include regex, defaults to '.*' (all).")
@@ -31,10 +35,22 @@ struct Reminder2Json: AsyncParsableCommand {
     @Flag(help: "If true, include deleted reminders. Defaults to false.")
     var includeDeleted = false
 
+    @Option(help: "the output format, defaults to fullJson")
+    var outputFormat: OutputFormat = .fullJson
+
+    func dateDescription(date: Date) -> String {
+        return date.description.components(separatedBy: " +0000").first ?? ""
+    }
+
+    func simpleDateDescription(date: Date) -> String {
+        let simple = date.description.components(separatedBy: " +0000").first ?? ""
+        return String(simple.dropLast(3))
+    }
+
     private func toObject(alarm: EKAlarm) -> Dictionary<String, Any> {
         var d: [String: Any] = [:]
         if let absoluteDate = alarm.absoluteDate {
-            d["absoluteDate"] = absoluteDate.description
+            d["absoluteDate"] = dateDescription(date: absoluteDate)
         }
         if alarm.relativeOffset > 0 {
             d["relativeOffset"] = alarm.relativeOffset
@@ -67,8 +83,8 @@ struct Reminder2Json: AsyncParsableCommand {
 
     private func toObject(reminder: EKReminder) -> Dictionary<String, Any> {
         var d: [String: Any] = [:]
-        d["list"] = reminder.calendar.title
-        d["account"] = reminder.calendar.source.title
+        // d["list"] = reminder.calendar.title
+        // d["account"] = reminder.calendar.source.title
         d["calendarItemIdentifier"] = reminder.calendarItemIdentifier
         d["calendarItemExternalIdentifier"] = reminder.calendarItemExternalIdentifier
         d["title"] = reminder.title
@@ -76,10 +92,10 @@ struct Reminder2Json: AsyncParsableCommand {
             d["location"] = location
         }
         if let creationDate = reminder.creationDate {
-            d["creationDate"] = creationDate.description
+            d["creationDate"] = dateDescription(date: creationDate)
         }
         if let lastModifiedDate = reminder.lastModifiedDate {
-            d["lastModifiedDate"] = lastModifiedDate.description
+            d["lastModifiedDate"] = dateDescription(date: lastModifiedDate)
         }
         if let timeZone = reminder.timeZone {
             d["timeZone"] = timeZone.description
@@ -113,7 +129,7 @@ struct Reminder2Json: AsyncParsableCommand {
             }
         }
 
-        d["priority"] = "\(reminder.priority)"
+        d["priority"] = NSNumber(value:reminder.priority)
         // if reminder.priority == EKReminderPriority.low {
         //     d["priority"] = "low"
         // }
@@ -126,19 +142,63 @@ struct Reminder2Json: AsyncParsableCommand {
 
         if let startDateComponents = reminder.startDateComponents {
             if let date = startDateComponents.date {
-                d["startDate"] = date.description
+                d["startDate"] = dateDescription(date: date)
             }
         }
         if let dueDateComponents = reminder.dueDateComponents {
             if let date = dueDateComponents.date {
-                d["dueDate"] = date.description
+                d["dueDate"] = dateDescription(date: date)
             }
         }
 
         d["completed"] = NSNumber(value:reminder.isCompleted)
 
         if let completionDate = reminder.completionDate {
-            d["completionDate"] = completionDate.description
+            d["completionDate"] = dateDescription(date: completionDate)
+        }
+
+        return d
+    }
+
+    private func toSimpleObject(reminder: EKReminder) throws -> Dictionary<String, Any> {
+        var d: [String: Any] = [:]
+        d["title"] = reminder.title
+        if let creationDate = reminder.creationDate {
+            d["creationDate"] = simpleDateDescription(date: creationDate)
+        }
+        if let timeZone = reminder.timeZone {
+            d["timeZone"] = timeZone.description
+        }
+        if let notes = reminder.notes {
+            d["notes"] = notes
+        }
+
+        if let recurrenceRules = reminder.recurrenceRules {
+            if recurrenceRules.count == 1 {
+                d["recurrance"] = recurrenceRules.first!.description.components(separatedBy:"RRULE ").last
+            }
+            if recurrenceRules.count > 1 {
+                throw CLIError.unexpected
+            }
+        }
+
+        d["priority"] = NSNumber(value:reminder.priority)
+
+        if let startDateComponents = reminder.startDateComponents {
+            if let date = startDateComponents.date {
+                d["startDate"] = simpleDateDescription(date: date)
+            }
+        }
+        if let dueDateComponents = reminder.dueDateComponents {
+            if let date = dueDateComponents.date {
+                d["dueDate"] = simpleDateDescription(date: date)
+            }
+        }
+
+        d["completed"] = NSNumber(value:reminder.isCompleted)
+
+        if let completionDate = reminder.completionDate {
+            d["completionDate"] = simpleDateDescription(date: completionDate)
         }
 
         return d
@@ -164,16 +224,24 @@ struct Reminder2Json: AsyncParsableCommand {
         }
 
         let predicate = store.predicateForReminders(in: nil)
-        let reminders = try await store.reminders(matching: predicate)
-        var l = [Any]()
+        let remindersStore = try await store.reminders(matching: predicate)
+        var reminders = [EKReminder]()
+        for r in remindersStore {
+             reminders.append(r)
+        }
+        reminders.sort { $0.creationDate! < $1.creationDate! }
+        var all = Dictionary<String, Dictionary<String, [Any]>>()
         for r in reminders {
             if try skip(reminder:r) {
                 continue
             }
-            let d = toObject(reminder: r)
-            l.append(d)
+            let d = switch outputFormat {
+            case .fullJson: toObject(reminder: r)
+            case .simple: try toSimpleObject(reminder: r)
+            }
+            all[r.calendar.source.title, default: [:]][r.calendar.title, default: []].append(d)
         }
-        let j = try JSONSerialization.data(withJSONObject: l, options: [.prettyPrinted])
+        let j = try JSONSerialization.data(withJSONObject: all, options: [.prettyPrinted])
         let out = FileHandle.standardOutput
         out.write(j)
     }
