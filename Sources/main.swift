@@ -21,7 +21,7 @@ extension EKEventStore {
 }
 
 enum OutputFormat : String, ExpressibleByArgument, CaseIterable {
-    case fullJson, simple
+    case fullJson, remindmd
 }
 
 @main
@@ -35,7 +35,7 @@ struct Reminder2Json: AsyncParsableCommand {
     @Flag(help: "If true, include deleted reminders. Defaults to false.")
     var includeDeleted = false
 
-    @Option(help: "the output format, defaults to fullJson")
+    @Option(help: "the output format, defaults to fullJson [fullJson, remindmd]")
     var outputFormat: OutputFormat = .fullJson
 
     func dateDescription(date: Date) -> String {
@@ -237,11 +237,11 @@ struct Reminder2Json: AsyncParsableCommand {
             }
             let d = switch outputFormat {
             case .fullJson: toObject(reminder: r)
-            case .simple: try toSimpleObject(reminder: r)
+            case .remindmd: try toSimpleObject(reminder: r)
             }
             all[r.calendar.source.title, default: [:]][r.calendar.title, default: []].append(d)
         }
-        let j = try JSONSerialization.data(withJSONObject: all, options: [.prettyPrinted])
+        let j = try JSONSerialization.data(withJSONObject: ["reminders": all], options: [.prettyPrinted])
         let out = FileHandle.standardOutput
         out.write(j)
     }
