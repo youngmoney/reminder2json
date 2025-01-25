@@ -175,7 +175,7 @@ struct Reminder2Json: AsyncParsableCommand {
 
         if let recurrenceRules = reminder.recurrenceRules {
             if recurrenceRules.count == 1 {
-                d["recurrance"] = recurrenceRules.first!.description.components(separatedBy:"RRULE ").last
+                d["recurrence"] = recurrenceRules.first!.description.components(separatedBy:"RRULE ").last
             }
             if recurrenceRules.count > 1 {
                 throw CLIError.unexpected
