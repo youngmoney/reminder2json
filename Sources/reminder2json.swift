@@ -61,7 +61,7 @@ struct Reminder2Json: AsyncParsableCommand {
             }
             all[r.calendar.source.title, default: [:]][r.calendar.title, default: []].append(d)
         }
-        let j = try JSONSerialization.data(withJSONObject: ["reminders": all], options: [.prettyPrinted])
+        let j = try JSONSerialization.data(withJSONObject: ["reminders": all], options: [.prettyPrinted, .sortedKeys])
         let out = FileHandle.standardOutput
         out.write(j)
     }
