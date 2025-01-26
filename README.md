@@ -29,3 +29,10 @@ Excluded lists are always excluded, even if they match an include.
 ## Help
 
 If the output is empty, go to `Settings > Privacy & Security > Reminders` and ensure your terminal (or however you are running the command) has access.
+
+## Releases
+
+```
+swift build --configuration release
+cp .build/release/reminder2json bin/
+```
